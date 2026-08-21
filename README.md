@@ -98,6 +98,8 @@ Release Please owns the repository version. Conventional commits drive version b
 
 When the Release Please PR is merged, the same release workflow creates the GitHub release and publishes both the versioned container image and the Helm chart to GHCR.
 
+A release PR must retain Release Please's `autorelease: pending` metadata. If a PR has to be recreated manually from the generated release branch, restore that label before merging it; otherwise Release Please will treat the merge as an ordinary commit and generate the next release proposal instead of tagging the merged version.
+
 ## Roadmap
 
 1. Validate the pinned Web Client baseline and OCI release pipeline.
