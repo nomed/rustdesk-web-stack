@@ -12,7 +12,7 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "charts/rustdesk-web/Chart.yaml"
+          "path": "charts/rustdesk-stack/Chart.yaml"
         }
       ]
     }
