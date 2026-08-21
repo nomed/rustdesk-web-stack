@@ -46,22 +46,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build release image
+      - name: Build release web image
         shell: bash
         env:
-          IMAGE_TAG: ghcr.io/nomed/rustdesk-web-stack:${{ needs.release-please.outputs.version }}
+          IMAGE_TAG: ghcr.io/nomed/rustdesk-web-stack/web:${{ needs.release-please.outputs.version }}
         run: bash build/build-baseline-image.sh
 
-      - name: Publish release image
+      - name: Publish release web image
         shell: bash
         run: |
           set -euo pipefail
           version='${{ needs.release-please.outputs.version }}'
-          docker push "ghcr.io/nomed/rustdesk-web-stack:${version}"
-          docker tag "ghcr.io/nomed/rustdesk-web-stack:${version}" "ghcr.io/nomed/rustdesk-web-stack:v${version}"
-          docker tag "ghcr.io/nomed/rustdesk-web-stack:${version}" ghcr.io/nomed/rustdesk-web-stack:latest
-          docker push "ghcr.io/nomed/rustdesk-web-stack:v${version}"
-          docker push ghcr.io/nomed/rustdesk-web-stack:latest
+          base='ghcr.io/nomed/rustdesk-web-stack/web'
+          docker push "${base}:${version}"
+          docker tag "${base}:${version}" "${base}:v${version}"
+          docker tag "${base}:${version}" "${base}:latest"
+          docker push "${base}:v${version}"
+          docker push "${base}:latest"
 
       - name: Set up Helm
         uses: azure/setup-helm@v4.3.1
@@ -70,18 +71,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          helm lint charts/rustdesk-web
-          helm template rustdesk-web charts/rustdesk-web >/dev/null
+          helm lint charts/rustdesk-stack
+          helm template rustdesk charts/rustdesk-stack >/dev/null
+          helm template rustdesk charts/rustdesk-stack \
+            --set gateway.enabled=true \
+            --set gateway.gatewayName=public \
+            --set gateway.hostname=rustdesk.example.com >/dev/null
 
       - name: Package Helm chart
         shell: bash
         run: |
           set -euo pipefail
           version='${{ needs.release-please.outputs.version }}'
-          test "$(awk '/^version:/ {print $2}' charts/rustdesk-web/Chart.yaml)" = "${version}"
-          test "$(awk -F'\"' '/^appVersion:/ {print $2}' charts/rustdesk-web/Chart.yaml)" = "${version}"
+          test "$(awk '/^version:/ {print $2}' charts/rustdesk-stack/Chart.yaml)" = "${version}"
+          test "$(awk -F'\"' '/^appVersion:/ {print $2}' charts/rustdesk-stack/Chart.yaml)" = "${version}"
           mkdir -p dist/chart
-          helm package charts/rustdesk-web --destination dist/chart
+          helm package charts/rustdesk-stack --destination dist/chart
 
       - name: Log in to GHCR for Helm
         shell: bash
@@ -93,4 +98,5 @@ jobs:
         run: |
           set -euo pipefail
           version='${{ needs.release-please.outputs.version }}'
-          helm push "dist/chart/rustdesk-web-${version}.tgz" oci://ghcr.io/nomed/charts
+          helm push "dist/chart/rustdesk-stack-${version}.tgz" \
+            oci://ghcr.io/nomed/rustdesk-web-stack/charts
