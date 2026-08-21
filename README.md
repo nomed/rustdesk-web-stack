@@ -9,18 +9,20 @@ Unofficial, reproducible packaging and deployment stack for the RustDesk Web Cli
 
 **Early bootstrap / proof of concept.**
 
-The RustDesk upstream repository still contains and actively maintains Web Client code, but its `build-rustdesk-web` GitHub Actions job is currently disabled (`if: False`). This repository reproduces that upstream build recipe with pinned inputs and packages the resulting static client as an OCI image.
+RustDesk still contains Web Client-specific application code and receives Web Client fixes, but the current OSS tree no longer contains the historical `flutter/web` scaffold. At the same time, upstream still carries a disabled (`if: False`) `build-rustdesk-web` workflow that assumes `flutter/web/js` already exists. The upstream workflow and current source tree therefore no longer match exactly.
+
+This project makes that mismatch explicit and reconstructs a reproducible build from pinned RustDesk source plus RustDesk's official `web_deps.tar.gz` bundle.
 
 Current CI target:
 
 ```text
 pinned RustDesk source
         |
-        v
-flutter/web/js build
-        |
-        v
-web_deps.tar.gz
+        +--> official web_deps.tar.gz
+        |        |
+        |        +--> bootstrap flutter/web
+        |                 |
+        |                 +--> build JS when source is present
         |
         v
 flutter build web --release
@@ -30,11 +32,11 @@ flutter build web --release
         +--> ghcr.io/nomed/rustdesk-web-stack
 ```
 
-The container is published only from a successful `main` build. Pull requests build and validate the web client without publishing an image. The build script is invoked through Bash so the repository does not depend on executable-bit metadata from the GitHub Contents API.
+The container is published only from a successful `main` build. Pull requests build and validate the web client without publishing an image.
 
 ## Goals
 
-- build the RustDesk Web Client from a pinned upstream revision;
+- build the RustDesk Web Client from pinned, reviewable upstream inputs;
 - package the generated Flutter Web assets as an OCI image;
 - expose the web application through a standard HTTP server;
 - deploy `hbbs` and `hbbr` with the WebSocket endpoints required by browser clients;
@@ -79,7 +81,7 @@ docs/                   Architecture and operational notes
 
 ## Build
 
-The build is intentionally pinned in `build/upstream.env`.
+The build inputs are pinned in `build/upstream.env`.
 
 Prerequisites are Git, Flutter at the pinned version, Node/npm and Yarn. Then run:
 
@@ -91,19 +93,21 @@ The generated static application is written to `dist/web`.
 
 ## Upstream build note
 
-RustDesk upstream keeps a disabled `build-rustdesk-web` job in `.github/workflows/flutter-build.yml`. Its recipe builds the JavaScript bridge under `flutter/web/js`, downloads the upstream `web_deps.tar.gz` bundle, applies the Flutter patch required by the pinned SDK where necessary, and finally runs:
+RustDesk upstream keeps a disabled `build-rustdesk-web` job in `.github/workflows/flutter-build.yml`. That job still assumes the historical `flutter/web/js` directory exists before downloading `web_deps.tar.gz`, while the current OSS source tree no longer includes `flutter/web`.
+
+`rustdesk-web-stack` therefore bootstraps `flutter/web` from the official RustDesk web dependency bundle first, then builds the JavaScript layer only when its source is actually present, before running:
 
 ```bash
 cd flutter
 flutter build web --release
 ```
 
-This project mirrors that sequence instead of treating a plain `flutter build web` as sufficient.
+This behavior is deliberately fail-fast: if the official bundle does not provide a usable Flutter web scaffold, CI stops and exposes its contents rather than publishing a misleading image.
 
 ## Roadmap
 
-1. Reproduce the upstream disabled Web Client build locally and in CI.
-2. Pin the RustDesk commit and all external build inputs.
+1. Reproduce a working Web Client build in CI from pinned upstream inputs.
+2. Pin and checksum all external build inputs.
 3. Publish a minimal static web container.
 4. Add Helm templates for the web client plus `hbbs`/`hbbr` services.
 5. Add HTTPS/WSS ingress examples and an end-to-end browser connection test.
