@@ -58,7 +58,7 @@ jobs:
 
       - name: Build web client
         shell: bash
-        run: ./build/build-web.sh
+        run: bash build/build-web.sh
 
       - name: Verify web artifact
         shell: bash
