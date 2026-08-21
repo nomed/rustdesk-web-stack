@@ -30,7 +30,7 @@ flutter build web --release
         +--> ghcr.io/nomed/rustdesk-web-stack
 ```
 
-The container is published only from a successful `main` build. Pull requests build and validate the web client without publishing an image.
+The container is published only from a successful `main` build. Pull requests build and validate the web client without publishing an image. The build script is invoked through Bash so the repository does not depend on executable-bit metadata from the GitHub Contents API.
 
 ## Goals
 
@@ -84,7 +84,7 @@ The build is intentionally pinned in `build/upstream.env`.
 Prerequisites are Git, Flutter at the pinned version, Node/npm and Yarn. Then run:
 
 ```bash
-./build/build-web.sh
+bash build/build-web.sh
 ```
 
 The generated static application is written to `dist/web`.
