@@ -9,7 +9,14 @@ Unofficial, reproducible packaging and deployment stack for the RustDesk Web Cli
 
 **Early bootstrap / proof of concept.**
 
-The RustDesk upstream repository still contains and actively maintains Web Client code, but its `build-rustdesk-web` GitHub Actions job is currently disabled (`if: False`). This repository starts from that upstream build recipe and aims to make the web build reproducible and deployable without depending on the hosted `rustdesk.com/web` client.
+RustDesk still actively maintains browser-specific application code, and its main GitHub Actions workflow still contains a `build-rustdesk-web` job. However, that job is currently disabled (`if: False`) and the current OSS tree no longer ships the `flutter/web` scaffold that the disabled job assumes is present.
+
+This repository therefore separates the build into two pinned inputs:
+
+1. the current official RustDesk source revision, which remains authoritative for the Dart/Rust application code;
+2. a pinned RustDesk-derived historical web scaffold used only to restore `flutter/web` (HTML/bootstrap/JS build sources).
+
+The historical scaffold's vendored codec/runtime binaries are discarded. The build downloads RustDesk's official `web_deps.tar.gz`, rebuilds the JavaScript bridge against the pinned current RustDesk source, and then runs the Flutter web build.
 
 ## Goals
 
@@ -56,23 +63,29 @@ docs/                   Architecture and operational notes
 .github/workflows/       CI/build automation
 ```
 
-## Upstream build note
+## Reproducible web build
 
-At the time this repository was created, RustDesk upstream keeps a disabled `build-rustdesk-web` job in `.github/workflows/flutter-build.yml`. The recipe includes preparation of the web JavaScript dependencies, extraction of `web_deps.tar.gz`, and finally:
+Pinned build inputs live in `build/upstream.env`.
 
-```bash
-cd flutter
-flutter build web --release
-```
+The build implemented by `build/build-web.sh`:
 
-This project will reproduce that process with pinned inputs rather than treating a plain `flutter build web` as sufficient.
+1. checks out the pinned official RustDesk revision;
+2. applies the Flutter patch used by RustDesk upstream when required;
+3. restores only `flutter/web` from the pinned historical scaffold;
+4. removes vendored historical web runtime binaries;
+5. downloads and extracts RustDesk's official `web_deps.tar.gz`;
+6. rebuilds the web JavaScript bridge (`ts-proto`, TypeScript, Vite 2.8);
+7. runs `flutter pub get` and `flutter build web --release`;
+8. writes provenance to `dist/web/BUILD-INFO.txt`.
+
+The GitHub Actions workflow uploads the web artifact and, on `main`, builds/publishes the static runtime image to GHCR.
 
 ## Roadmap
 
-1. Reproduce the upstream disabled Web Client build locally and in CI.
-2. Pin the RustDesk commit and all external build inputs.
-3. Publish a minimal static web container.
-4. Add Helm templates for the web client plus `hbbs`/`hbbr` services.
+1. Get the reconstructed Web Client build green in CI.
+2. Validate a real browser-to-agent session against self-hosted `hbbs`/`hbbr`.
+3. Publish a minimal static web container with a tested tag/version policy.
+4. Complete Helm templates for the web client plus `hbbs`/`hbbr` services.
 5. Add HTTPS/WSS ingress examples and an end-to-end browser connection test.
 
 ## License and upstream components
