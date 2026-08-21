@@ -1,0 +1,64 @@
+nameOverride: ""
+fullnameOverride: ""
+
+web:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/nomed/rustdesk-web-stack/web
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+
+rustdeskServer:
+  image:
+    repository: docker.io/rustdesk/rustdesk-server
+    tag: "1.1.17"
+    pullPolicy: IfNotPresent
+  keys:
+    existingSecret: ""
+
+hbbs:
+  enabled: true
+  replicaCount: 1
+  relay: ""
+  extraArgs: []
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+  service:
+    type: ClusterIP
+    annotations: {}
+    ports:
+      natTest: 21115
+      rendezvous: 21116
+      websocket: 21118
+
+hbbr:
+  enabled: true
+  replicaCount: 1
+  extraArgs: []
+  service:
+    type: ClusterIP
+    annotations: {}
+    ports:
+      relay: 21117
+      websocket: 21119
+
+gateway:
+  enabled: false
+  createGateway: false
+  gatewayClassName: ""
+  gatewayName: rustdesk
+  gatewayNamespace: ""
+  hostname: rustdesk.example.com
+  sectionName: https
+  tlsSecretName: ""
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
