@@ -9,20 +9,21 @@ Unofficial, reproducible packaging and deployment stack for the RustDesk Web Cli
 
 **Early bootstrap / proof of concept.**
 
-RustDesk still contains Web Client-specific application code and receives Web Client fixes, but the current OSS tree no longer contains the historical `flutter/web` scaffold. At the same time, upstream still carries a disabled (`if: False`) `build-rustdesk-web` workflow that assumes `flutter/web/js` already exists. The upstream workflow and current source tree therefore no longer match exactly.
+RustDesk still contains and actively changes Web Client-specific Dart code, but the current OSS source tree no longer contains the historical `flutter/web` scaffold. Upstream also still carries a disabled (`if: False`) `build-rustdesk-web` workflow that assumes `flutter/web/js` exists, so that workflow no longer matches the public source tree as-is.
 
-This project makes that mismatch explicit and reconstructs a reproducible build from pinned RustDesk source plus RustDesk's official `web_deps.tar.gz` bundle.
+The official `web_deps.tar.gz` referenced by RustDesk was verified in CI: it contains codec/runtime dependencies (`ogvjs`, `libopus`, `yuv-canvas`) only, not `index.html` or the JavaScript/TypeScript client scaffold.
 
-Current CI target:
+This project therefore builds from three explicit, pinned inputs:
 
 ```text
-pinned RustDesk source
+official RustDesk source (current Dart/Rust application)
         |
-        +--> official web_deps.tar.gz
-        |        |
-        |        +--> bootstrap flutter/web
-        |                 |
-        |                 +--> build JS when source is present
+historical RustDesk-derived flutter/web scaffold
+        |
+official RustDesk web_deps.tar.gz (codec/wasm assets)
+        |
+        v
+regenerate JS bridge against current RustDesk source
         |
         v
 flutter build web --release
@@ -31,6 +32,8 @@ flutter build web --release
         |
         +--> ghcr.io/nomed/rustdesk-web-stack
 ```
+
+The historical scaffold currently comes from a pinned revision of `pmietlicki/rustdesk-web-client`, which preserves the old RustDesk `flutter/web` tree and carries the same upstream AGPL license. Only `flutter/web` is overlaid; Dart/Rust application code stays on the pinned official RustDesk revision. Vendored codec binaries from the historical tree are discarded and replaced by the official RustDesk dependency bundle.
 
 The container is published only from a successful `main` build. Pull requests build and validate the web client without publishing an image.
 
@@ -81,9 +84,9 @@ docs/                   Architecture and operational notes
 
 ## Build
 
-The build inputs are pinned in `build/upstream.env`.
+All source inputs are pinned in `build/upstream.env`.
 
-Prerequisites are Git, Flutter at the pinned version, Node/npm and Yarn. Then run:
+Prerequisites are Git, Flutter at the pinned version, Node/npm, Python and Yarn. Then run:
 
 ```bash
 bash build/build-web.sh
@@ -91,27 +94,28 @@ bash build/build-web.sh
 
 The generated static application is written to `dist/web`.
 
-## Upstream build note
+## Provenance and build strategy
 
-RustDesk upstream keeps a disabled `build-rustdesk-web` job in `.github/workflows/flutter-build.yml`. That job still assumes the historical `flutter/web/js` directory exists before downloading `web_deps.tar.gz`, while the current OSS source tree no longer includes `flutter/web`.
+The build intentionally does **not** copy the entire historical fork. It:
 
-`rustdesk-web-stack` therefore bootstraps `flutter/web` from the official RustDesk web dependency bundle first, then builds the JavaScript layer only when its source is actually present, before running:
+1. checks out the pinned official `rustdesk/rustdesk` revision;
+2. checks out the pinned historical RustDesk-derived scaffold;
+3. overlays only `flutter/web`;
+4. removes codec binaries inherited from that scaffold;
+5. extracts RustDesk's official `web_deps.tar.gz`;
+6. regenerates the JavaScript bridge against the current RustDesk source;
+7. runs `flutter build web --release`.
 
-```bash
-cd flutter
-flutter build web --release
-```
-
-This behavior is deliberately fail-fast: if the official bundle does not provide a usable Flutter web scaffold, CI stops and exposes its contents rather than publishing a misleading image.
+This behavior is deliberately fail-fast. Compatibility between the historical scaffold and current RustDesk code must be demonstrated by CI before an OCI image is published.
 
 ## Roadmap
 
-1. Reproduce a working Web Client build in CI from pinned upstream inputs.
-2. Pin and checksum all external build inputs.
-3. Publish a minimal static web container.
+1. Obtain a green Web Client build in CI from the pinned inputs.
+2. Pin/checksum every downloaded external artifact.
+3. Publish a minimal static web container to GHCR.
 4. Add Helm templates for the web client plus `hbbs`/`hbbr` services.
 5. Add HTTPS/WSS ingress examples and an end-to-end browser connection test.
 
 ## License and upstream components
 
-This repository contains deployment/build tooling. RustDesk and any upstream artifacts retain their respective licenses and copyright notices. Before redistributing generated RustDesk artifacts, review the applicable upstream license and notices.
+This repository contains deployment/build tooling. RustDesk and RustDesk-derived scaffold code retain their respective licenses and copyright notices. Before redistributing generated RustDesk artifacts, review the applicable upstream license and notices.
