@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/nomed/rustdesk-web-stack/compare/v0.2.0...v0.3.0) (2026-08-21)
+
+
+### Features
+
+* deliver full RustDesk stack chart ([795e1bf](https://github.com/nomed/rustdesk-web-stack/commit/795e1bfb99f0170c45ab8a53d1a722628187c4c3))
+
 ## [0.2.0](https://github.com/nomed/rustdesk-web-stack/compare/v0.1.0...v0.2.0) (2026-08-21)
 
 
