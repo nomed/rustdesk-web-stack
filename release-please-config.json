@@ -11,14 +11,8 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
-          "type": "yaml",
-          "path": "charts/rustdesk-web/Chart.yaml",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "yaml",
-          "path": "charts/rustdesk-web/Chart.yaml",
-          "jsonpath": "$.appVersion"
+          "type": "generic",
+          "path": "charts/rustdesk-web/Chart.yaml"
         }
       ]
     }
