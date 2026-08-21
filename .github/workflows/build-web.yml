@@ -7,12 +7,14 @@ on:
     paths:
       - "build/**"
       - "container/**"
+      - "charts/**"
       - ".github/workflows/build-web.yml"
       - "README.md"
   pull_request:
     paths:
       - "build/**"
       - "container/**"
+      - "charts/**"
       - ".github/workflows/build-web.yml"
       - "README.md"
 
@@ -30,6 +32,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.1
+
+      - name: Validate Helm chart
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm lint charts/rustdesk-web
+          helm template rustdesk-web charts/rustdesk-web >/dev/null
 
       - name: Load pinned baseline versions
         id: versions
