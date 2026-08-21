@@ -14,10 +14,12 @@ web:
 
 rustdeskServer:
   image:
-    repository: docker.io/rustdesk/rustdesk-server
-    tag: "1.1.17"
+    repository: ghcr.io/rustdesk/rustdesk-server
+    tag: "1.1.16"
     pullPolicy: IfNotPresent
   keys:
+    # Optional Secret injected as environment variables into hbbs/hbbr.
+    # Use a KEY entry to enforce the same server key on both components.
     existingSecret: ""
 
 hbbs:
