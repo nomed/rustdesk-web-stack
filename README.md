@@ -9,30 +9,49 @@ Unofficial, reproducible packaging and deployment stack for the RustDesk Web Cli
 
 **Early bootstrap / proof of concept.**
 
-RustDesk still actively maintains browser-specific application code, and its main GitHub Actions workflow still contains a `build-rustdesk-web` job. However, that job is currently disabled (`if: False`) and the current OSS tree no longer ships the `flutter/web` scaffold that the disabled job assumes is present.
+RustDesk still contains and actively changes Web Client-specific Dart code, but the current OSS source tree no longer contains the historical `flutter/web` scaffold. Upstream also still carries a disabled (`if: False`) `build-rustdesk-web` workflow that assumes `flutter/web/js` exists, so current public source and that workflow no longer match as-is.
 
-This repository therefore separates the build into two pinned inputs:
+The repository therefore separates two tracks.
 
-1. the current official RustDesk source revision, which remains authoritative for the Dart/Rust application code;
-2. a pinned RustDesk-derived historical web scaffold used only to restore `flutter/web` (HTML/bootstrap/JS build sources).
+### 1. Baseline — primary delivery path
 
-The historical scaffold's vendored codec/runtime binaries are discarded. The build downloads RustDesk's official `web_deps.tar.gz`, rebuilds the JavaScript bridge against the pinned current RustDesk source, and then runs the Flutter web build.
+A known web-capable RustDesk-derived source and its packaging toolchain are pinned by commit in `build/baseline.env`. CI builds the complete Nginx image, extracts the generated static assets for inspection, and publishes to GHCR only after a successful `main` build.
+
+```text
+pinned web-capable RustDesk source
+        |
+pinned packaging toolchain
+        |
+JS/TS + Rust/WASM + Flutter Web
+        |
+        +--> dist/web CI artifact
+        |
+        +--> ghcr.io/nomed/rustdesk-web-stack
+```
+
+The baseline currently uses:
+
+- `MonsieurBiche/rustdesk-web-client@525b5e561faf824850c71500adf463e4e0a504d4` as the web-capable RustDesk-derived source;
+- `pmietlicki/docker-rustdesk-web-client@53b466586ba1de91ae489cd55e33bf99968e97c8` as the pinned reproducible packaging recipe;
+- Flutter `3.22.1`;
+- Rust `1.97.0` with the WebAssembly target;
+- WSS enabled.
+
+### 2. Current RustDesk port — experimental
+
+`build/build-web.sh` tracks the separate effort to reconstruct a Web Client from a current pinned `rustdesk/rustdesk` revision. CI already established that RustDesk's official `web_deps.tar.gz` contains codec/runtime dependencies only and does **not** contain the missing `flutter/web` scaffold.
+
+This track must become independently green before it can replace the baseline.
 
 ## Goals
 
-- build the RustDesk Web Client from a pinned upstream revision;
-- package the generated Flutter Web assets as an OCI image;
-- expose the web application through a standard HTTP server;
-- deploy `hbbs` and `hbbr` with the WebSocket endpoints required by browser clients;
-- provide a Kubernetes/Helm deployment path;
-- keep upstream RustDesk source code out of this repository whenever possible;
-- make upstream version bumps explicit and reproducible.
-
-## Non-goals
-
-- fork or rebrand RustDesk;
-- replace the RustDesk protocol or server;
-- claim compatibility beyond what is verified by CI and the project test matrix.
+- provide a working browser client image first;
+- keep every external source pinned and reviewable;
+- package generated Flutter Web assets as an OCI image;
+- expose API and WebSocket paths through one HTTP(S) endpoint;
+- deploy the web client plus `hbbs`/`hbbr` through Helm;
+- add HTTPS/WSS ingress examples and end-to-end validation;
+- progressively move the web build toward current RustDesk source without pretending the current OSS tree is directly buildable today.
 
 ## Planned architecture
 
@@ -42,52 +61,69 @@ Browser
    | HTTPS / WSS
    v
 Ingress / reverse proxy
-   |-----------------------|
-   |                       |
-   v                       v
-rustdesk-web             hbbs / hbbr
-(static Flutter app)     WebSocket endpoints
-                           |
-                           v
-                    RustDesk remote agent
+   |
+   v
+rustdesk-web
+   |-- /api/     --> RustDesk API/backend
+   |-- /ws/id    --> hbbs :21118
+   `-- /ws/relay --> hbbr :21119
+                         |
+                         v
+                  RustDesk remote agent
 ```
 
 ## Repository layout
 
 ```text
-build/                  Web Client build tooling
-container/              Runtime container for generated web assets
-charts/rustdesk-web/    Helm chart
-examples/               Example values/configuration
-docs/                   Architecture and operational notes
-.github/workflows/       CI/build automation
+build/baseline.env            pinned delivery inputs
+build/build-baseline-image.sh primary image build
+build/upstream.env            current-RustDesk experimental inputs
+build/build-web.sh            current-RustDesk experimental build
+container/                    runtime/container support
+charts/rustdesk-web/          Helm chart
+examples/                     deployment examples
+docs/                         architecture and operational notes
+.github/workflows/            CI/build automation
 ```
 
-## Reproducible web build
+## Build the baseline
 
-Pinned build inputs live in `build/upstream.env`.
+Prerequisites: Git and Docker.
 
-The build implemented by `build/build-web.sh`:
+```bash
+bash build/build-baseline-image.sh
+```
 
-1. checks out the pinned official RustDesk revision;
-2. applies the Flutter patch used by RustDesk upstream when required;
-3. restores only `flutter/web` from the pinned historical scaffold;
-4. removes vendored historical web runtime binaries;
-5. downloads and extracts RustDesk's official `web_deps.tar.gz`;
-6. rebuilds the web JavaScript bridge (`ts-proto`, TypeScript, Vite 2.8);
-7. runs `flutter pub get` and `flutter build web --release`;
-8. writes provenance to `dist/web/BUILD-INFO.txt`.
+Outputs:
 
-The GitHub Actions workflow uploads the web artifact and, on `main`, builds/publishes the static runtime image to GHCR.
+```text
+rustdesk-web-stack:ci   local OCI image
+dist/web/               extracted static web application
+```
+
+## CI publication
+
+Pull requests build and validate the baseline without publishing it. A successful build on `main` publishes:
+
+```text
+ghcr.io/nomed/rustdesk-web-stack:latest
+ghcr.io/nomed/rustdesk-web-stack:web-<source-sha>
+```
+
+## Current RustDesk investigation
+
+The disabled upstream web job historically performed a JavaScript/Vite build followed by `flutter build web --release`. The current public RustDesk tree no longer contains `flutter/web`. CI also verified that the official dependency archive contains `ogvjs`, `libopus`, `yuv-canvas` and related runtime assets, but not the missing client scaffold.
+
+The experimental current-source build is retained so that this gap can be closed explicitly and tested rather than hidden behind an unverified Dockerfile.
 
 ## Roadmap
 
-1. Get the reconstructed Web Client build green in CI.
-2. Validate a real browser-to-agent session against self-hosted `hbbs`/`hbbr`.
-3. Publish a minimal static web container with a tested tag/version policy.
-4. Complete Helm templates for the web client plus `hbbs`/`hbbr` services.
-5. Add HTTPS/WSS ingress examples and an end-to-end browser connection test.
+1. Get the pinned baseline image green in our CI and publish it to GHCR.
+2. Wire the Helm chart to the published image and add runtime proxy settings.
+3. Add `hbbs` and `hbbr`, including ports `21118`/`21119`.
+4. Add HTTPS/WSS Ingress examples and an end-to-end connection smoke test.
+5. Continue the current-RustDesk web port and promote it only when it passes the same tests.
 
-## License and upstream components
+## License and provenance
 
-This repository contains deployment/build tooling. RustDesk and any upstream artifacts retain their respective licenses and copyright notices. Before redistributing generated RustDesk artifacts, review the applicable upstream license and notices.
+RustDesk and the RustDesk-derived web client are AGPL-licensed upstream components. This repository does not claim authorship of those components. External source and packaging revisions used by CI are explicit and pinned; generated artifacts retain the applicable upstream license and notices.
