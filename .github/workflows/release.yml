@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-22.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Release Please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Log in to GHCR for Docker
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build release image
+        shell: bash
+        env:
+          IMAGE_TAG: ghcr.io/nomed/rustdesk-web-stack:${{ needs.release-please.outputs.version }}
+        run: bash build/build-baseline-image.sh
+
+      - name: Publish release image
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.release-please.outputs.version }}'
+          docker push "ghcr.io/nomed/rustdesk-web-stack:${version}"
+          docker tag "ghcr.io/nomed/rustdesk-web-stack:${version}" "ghcr.io/nomed/rustdesk-web-stack:v${version}"
+          docker tag "ghcr.io/nomed/rustdesk-web-stack:${version}" ghcr.io/nomed/rustdesk-web-stack:latest
+          docker push "ghcr.io/nomed/rustdesk-web-stack:v${version}"
+          docker push ghcr.io/nomed/rustdesk-web-stack:latest
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.1
+
+      - name: Validate Helm chart
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm lint charts/rustdesk-web
+          helm template rustdesk-web charts/rustdesk-web >/dev/null
+
+      - name: Package Helm chart
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.release-please.outputs.version }}'
+          test "$(awk '/^version:/ {print $2}' charts/rustdesk-web/Chart.yaml)" = "${version}"
+          test "$(awk -F'"' '/^appVersion:/ {print $2}' charts/rustdesk-web/Chart.yaml)" = "${version}"
+          mkdir -p dist/chart
+          helm package charts/rustdesk-web --destination dist/chart
+
+      - name: Log in to GHCR for Helm
+        shell: bash
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Publish Helm chart as OCI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.release-please.outputs.version }}'
+          helm push "dist/chart/rustdesk-web-${version}.tgz" oci://ghcr.io/nomed/charts
