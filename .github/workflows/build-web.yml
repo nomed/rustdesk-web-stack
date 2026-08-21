@@ -8,6 +8,8 @@ on:
       - "build/**"
       - "container/**"
       - "charts/**"
+      - ".context/**"
+      - "AGENTS.md"
       - ".github/workflows/build-web.yml"
       - "README.md"
   pull_request:
@@ -15,6 +17,8 @@ on:
       - "build/**"
       - "container/**"
       - "charts/**"
+      - ".context/**"
+      - "AGENTS.md"
       - ".github/workflows/build-web.yml"
       - "README.md"
 
@@ -40,8 +44,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          helm lint charts/rustdesk-web
-          helm template rustdesk-web charts/rustdesk-web >/dev/null
+          helm lint charts/rustdesk-stack
+          helm template rustdesk charts/rustdesk-stack >/dev/null
+          helm template rustdesk charts/rustdesk-stack \
+            --set gateway.enabled=true \
+            --set gateway.gatewayName=public \
+            --set gateway.hostname=rustdesk.example.com >/dev/null
 
       - name: Load pinned baseline versions
         id: versions
@@ -69,8 +77,8 @@ jobs:
           test -s dist/web/index.html
           test -s dist/web/main.dart.js || test -s dist/web/flutter_bootstrap.js
           test -s dist/web/BUILD-INFO.txt
+          grep -q '^Runtime: Caddy$' dist/web/BUILD-INFO.txt
           test -d dist/web/js
-          find dist/web -maxdepth 2 -type f | sort | head -100
 
       - name: Upload web artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -88,14 +96,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish baseline image
+      - name: Publish baseline web snapshot
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: bash
         run: |
           set -euo pipefail
           short_ref="${{ steps.versions.outputs.web_client_ref }}"
           short_ref="${short_ref:0:12}"
-          docker tag rustdesk-web-stack:ci ghcr.io/nomed/rustdesk-web-stack:latest
-          docker tag rustdesk-web-stack:ci "ghcr.io/nomed/rustdesk-web-stack:web-${short_ref}"
-          docker push ghcr.io/nomed/rustdesk-web-stack:latest
-          docker push "ghcr.io/nomed/rustdesk-web-stack:web-${short_ref}"
+          base='ghcr.io/nomed/rustdesk-web-stack/web'
+          docker tag rustdesk-web-stack:ci "${base}:edge"
+          docker tag rustdesk-web-stack:ci "${base}:web-${short_ref}"
+          docker push "${base}:edge"
+          docker push "${base}:web-${short_ref}"

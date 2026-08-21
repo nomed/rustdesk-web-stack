@@ -1,0 +1,44 @@
+schema_version: 1
+project: rustdesk-web-stack
+context_root: .context
+
+precedence:
+  - current_human_instruction
+  - accepted_decisions
+  - project_architecture_and_standards
+  - nearest_agents_md
+  - governing_issue_and_pull_request
+  - latest_handoff
+  - sessions
+  - temporary_notes
+
+records:
+  decisions:
+    path: .context/decisions
+    id_pattern: "ADR-{number:04d}"
+    statuses: [Draft, Proposed, Accepted, Deprecated, Superseded, Rejected, Withdrawn]
+    immutable_after_acceptance: true
+  handoffs:
+    path: .context/handoffs
+    id_pattern: "HANDOFF-{date}-{sequence:02d}"
+    authoritative: false
+  sessions:
+    path: .context/sessions
+    id_pattern: "SESSION-{date}-{sequence:02d}"
+    authoritative: false
+
+write_policy:
+  sessions: agents_allowed
+  handoffs: agents_allowed
+  decisions: proposal_allowed_human_acceptance_required
+  accepted_records_rewrite: forbidden
+  architecture_change_without_record: forbidden
+  release_or_packaging_change_without_record: forbidden
+  destructive_operation_without_explicit_approval: forbidden
+
+release_contract:
+  version_authority: release_please
+  tag_pattern: "v{version}"
+  web_image: "ghcr.io/nomed/rustdesk-web-stack/web:{version}"
+  helm_chart: "oci://ghcr.io/nomed/rustdesk-web-stack/charts/rustdesk-stack:{version}"
+  stack_version_independent_from_upstream: true

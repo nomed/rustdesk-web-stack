@@ -7,6 +7,7 @@ source "${ROOT_DIR}/build/baseline.env"
 
 WORK_DIR="${WORK_DIR:-${ROOT_DIR}/.work}"
 PACKAGING_DIR="${WORK_DIR}/docker-rustdesk-web-client"
+BUILDER_TAG="${BUILDER_TAG:-rustdesk-web-stack-builder:ci}"
 IMAGE_TAG="${IMAGE_TAG:-rustdesk-web-stack:ci}"
 OUT_DIR="${OUT_DIR:-${ROOT_DIR}/dist/web}"
 
@@ -31,7 +32,7 @@ actual_packaging_ref="$(git -C "${PACKAGING_DIR}" rev-parse HEAD)"
   exit 2
 }
 
-echo "==> Build RustDesk Web baseline image"
+echo "==> Build pinned upstream web builder image"
 docker build \
   --file "${PACKAGING_DIR}/Dockerfile" \
   --build-arg "RUSTDESK_REPO=${WEB_CLIENT_REPOSITORY}" \
@@ -39,11 +40,11 @@ docker build \
   --build-arg "FLUTTER_VERSION=${FLUTTER_VERSION}" \
   --build-arg "RUST_VERSION=${RUST_VERSION}" \
   --build-arg "ENABLE_WSS=${ENABLE_WSS}" \
-  --tag "${IMAGE_TAG}" \
+  --tag "${BUILDER_TAG}" \
   "${PACKAGING_DIR}"
 
 echo "==> Extract static web artifact"
-container_id="$(docker create "${IMAGE_TAG}")"
+container_id="$(docker create "${BUILDER_TAG}")"
 trap 'docker rm -f "${container_id}" >/dev/null 2>&1 || true' EXIT
 docker cp "${container_id}:/usr/share/nginx/html/." "${OUT_DIR}/"
 docker rm "${container_id}" >/dev/null
@@ -59,7 +60,14 @@ Web client ref: ${WEB_CLIENT_REF}
 Flutter version: ${FLUTTER_VERSION}
 Rust version: ${RUST_VERSION}
 WSS patch enabled: ${ENABLE_WSS}
+Runtime: Caddy
 EOF
+
+echo "==> Build project-owned Caddy runtime image"
+docker build \
+  --file "${ROOT_DIR}/container/Dockerfile" \
+  --tag "${IMAGE_TAG}" \
+  "${ROOT_DIR}"
 
 echo "==> Image: ${IMAGE_TAG}"
 echo "==> Web assets: ${OUT_DIR}"

@@ -1,0 +1,118 @@
+{{- if .Values.hbbs.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rustdesk-stack.fullname" . }}-hbbs
+  labels:
+    {{- include "rustdesk-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hbbs
+spec:
+  replicas: {{ .Values.hbbs.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "rustdesk-stack.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: hbbs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "rustdesk-stack.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: hbbs
+    spec:
+      containers:
+        - name: hbbs
+          image: "{{ .Values.rustdeskServer.image.repository }}:{{ .Values.rustdeskServer.image.tag }}"
+          imagePullPolicy: {{ .Values.rustdeskServer.image.pullPolicy }}
+          command: ["hbbs"]
+          args:
+            {{- if .Values.hbbs.extraArgs }}
+            {{- toYaml .Values.hbbs.extraArgs | nindent 12 }}
+            {{- else if .Values.hbbs.relay }}
+            - "-r"
+            - {{ .Values.hbbs.relay | quote }}
+            {{- end }}
+          {{- if .Values.rustdeskServer.keys.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.rustdeskServer.keys.existingSecret }}
+          {{- end }}
+          ports:
+            - name: nat-test
+              containerPort: 21115
+              protocol: TCP
+            - name: rendezvous-tcp
+              containerPort: 21116
+              protocol: TCP
+            - name: rendezvous-udp
+              containerPort: 21116
+              protocol: UDP
+            - name: websocket
+              containerPort: 21118
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /root
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.hbbs.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "rustdesk-stack.fullname" . }}-hbbs
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rustdesk-stack.fullname" . }}-hbbs
+  labels:
+    {{- include "rustdesk-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hbbs
+  {{- with .Values.hbbs.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.hbbs.service.type }}
+  ports:
+    - name: nat-test
+      port: {{ .Values.hbbs.service.ports.natTest }}
+      targetPort: nat-test
+      protocol: TCP
+    - name: rendezvous-tcp
+      port: {{ .Values.hbbs.service.ports.rendezvous }}
+      targetPort: rendezvous-tcp
+      protocol: TCP
+    - name: rendezvous-udp
+      port: {{ .Values.hbbs.service.ports.rendezvous }}
+      targetPort: rendezvous-udp
+      protocol: UDP
+    - name: websocket
+      port: {{ .Values.hbbs.service.ports.websocket }}
+      targetPort: websocket
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "rustdesk-stack.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: hbbs
+{{- if .Values.hbbs.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "rustdesk-stack.fullname" . }}-hbbs
+  labels:
+    {{- include "rustdesk-stack.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.hbbs.persistence.size }}
+  {{- if .Values.hbbs.persistence.storageClass }}
+  storageClassName: {{ .Values.hbbs.persistence.storageClass | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

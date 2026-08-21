@@ -1,12 +1,13 @@
 apiVersion: v2
-name: rustdesk-web
+name: rustdesk-stack
 version: 0.2.0 # x-release-please-version
 appVersion: "0.2.0" # x-release-please-version
-description: Unofficial Helm chart for the RustDesk Web Client deployment stack
+description: Unofficial full-stack Helm chart for RustDesk Web Client, hbbs and hbbr
 type: application
 home: https://github.com/nomed/rustdesk-web-stack
 sources:
   - https://github.com/nomed/rustdesk-web-stack
   - https://github.com/rustdesk/rustdesk
+  - https://github.com/rustdesk/rustdesk-server
 annotations:
   artifacthub.io/license: AGPL-3.0

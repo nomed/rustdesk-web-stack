@@ -1,115 +1,88 @@
 # rustdesk-web-stack
 
-Unofficial, reproducible packaging and deployment stack for the RustDesk Web Client and the RustDesk self-hosted server components required to use it.
+Unofficial, reproducible packaging and deployment stack for the RustDesk Web Client and RustDesk self-hosted server components.
 
 > [!IMPORTANT]
-> This project is **not affiliated with, sponsored by, or endorsed by RustDesk**. RustDesk is developed upstream at https://github.com/rustdesk/rustdesk.
+> This project is **not affiliated with, sponsored by, or endorsed by RustDesk**.
 
-## Status
+## What this project ships
 
-**Early bootstrap / proof of concept.**
-
-RustDesk still actively maintains browser-specific application code, and its main GitHub Actions workflow still contains a `build-rustdesk-web` job. However, that job is currently disabled (`if: False`) and the current OSS tree no longer ships the `flutter/web` scaffold that the disabled job assumes is present.
-
-This repository keeps the current-source reconstruction as an experimental track and uses a pinned, known web-capable RustDesk baseline for the deployable OCI artifacts.
-
-## Release artifacts
-
-Releases are managed by Release Please and use one semantic version across the repository, container image and Helm chart.
-
-For a release such as `v0.1.0` the workflow publishes:
+Release Please owns one semantic version for the stack. A release publishes:
 
 ```text
-ghcr.io/nomed/rustdesk-web-stack:0.1.0
-ghcr.io/nomed/rustdesk-web-stack:v0.1.0
-ghcr.io/nomed/rustdesk-web-stack:latest
-oci://ghcr.io/nomed/charts/rustdesk-web --version 0.1.0
+ghcr.io/nomed/rustdesk-web-stack/web:<version>
+oci://ghcr.io/nomed/rustdesk-web-stack/charts/rustdesk-stack:<version>
+GitHub release v<version>
 ```
+
+The stack version is independent from the RustDesk upstream server version.
 
 Install the Helm chart directly from GHCR:
 
 ```bash
-helm install rustdesk-web \
-  oci://ghcr.io/nomed/charts/rustdesk-web \
-  --version 0.1.0
+helm install rustdesk \
+  oci://ghcr.io/nomed/rustdesk-web-stack/charts/rustdesk-stack \
+  --version <version>
 ```
 
-By default the chart uses the image version matching `Chart.appVersion`. Override `image.tag` only when intentionally testing a different image.
-
-## Goals
-
-- build the RustDesk Web Client from pinned, reviewable source inputs;
-- package the generated Flutter Web assets as an OCI image;
-- publish the Helm chart as an OCI artifact to GHCR;
-- expose the web application through a standard HTTP server;
-- deploy `hbbs` and `hbbr` with the WebSocket endpoints required by browser clients;
-- provide a Kubernetes/Helm deployment path;
-- keep upstream RustDesk source code out of this repository whenever possible;
-- make upstream version bumps explicit and reproducible.
-
-## Non-goals
-
-- fork or rebrand RustDesk;
-- replace the RustDesk protocol or server;
-- claim compatibility beyond what is verified by CI and the project test matrix.
-
-## Planned architecture
+## Stack architecture
 
 ```text
 Browser
    |
    | HTTPS / WSS
    v
-Ingress / reverse proxy
-   |-----------------------|
-   |                       |
-   v                       v
-rustdesk-web             hbbs / hbbr
-(static Flutter app)     WebSocket endpoints
-                           |
-                           v
-                    RustDesk remote agent
+Kubernetes Gateway API
+   |-- /          -> web (Caddy + Flutter assets)
+   |-- /ws/id     -> hbbs :21118
+   `-- /ws/relay  -> hbbr :21119
+
+Native RustDesk clients
+   |-- TCP/UDP 21116 -> hbbs
+   `-- TCP     21117 -> hbbr
 ```
 
-## Repository layout
+The Helm chart does **not** install a Gateway controller. Envoy Gateway and Traefik are reference implementations; any conformant Gateway API controller may be used.
 
-```text
-build/                  Web Client build tooling
-container/              Runtime container for generated web assets
-charts/rustdesk-web/    Helm chart
-examples/               Example values/configuration
-docs/                   Architecture and operational notes
-.github/workflows/       CI, Release Please and publication automation
-```
+## Helm chart
 
-## Build tracks
+`charts/rustdesk-stack` deploys:
 
-`build/build-baseline-image.sh` is the release path. Its inputs are pinned in `build/baseline.env` and it produces the web runtime image plus `dist/web`.
+- the project-owned web image;
+- `hbbs` and its persistent data;
+- `hbbr`;
+- services for native and WebSocket ports;
+- optional Gateway/HTTPRoute resources;
+- optional shared server key injection through an existing Kubernetes Secret.
 
-`build/build-web.sh` is the experimental current-RustDesk reconstruction. Its inputs are pinned in `build/upstream.env`; it restores the historical `flutter/web` scaffold and attempts to regenerate it against current official RustDesk code.
+The default server image is pinned to the latest verified released RustDesk Server version rather than an upstream `latest` tag.
 
-## Versioning
+## Web build
 
-Release Please owns the repository version. Conventional commits drive version bumps and the release PR updates:
+`build/build-baseline-image.sh` uses pinned upstream web-capable sources/tooling to generate the RustDesk Web assets, extracts those assets, and then packages the released runtime with **Caddy**.
+
+`build/build-web.sh` remains the experimental track for reconstructing the Web Client from current official RustDesk sources.
+
+## Repository governance
+
+Read `AGENTS.md` and `.context/README.md` before meaningful work. Material architecture, deployment and release decisions are recorded under `.context/decisions/`; accepted records are immutable and must be superseded rather than edited.
+
+## Versioning and releases
+
+Conventional commits drive Release Please. A release PR updates:
 
 - `CHANGELOG.md`;
 - `.release-please-manifest.json`;
-- `charts/rustdesk-web/Chart.yaml` (`version` and `appVersion`).
+- `charts/rustdesk-stack/Chart.yaml` (`version` and `appVersion`).
 
-When the Release Please PR is merged, the same release workflow creates the GitHub release and publishes both the versioned container image and the Helm chart to GHCR.
+When the Release Please PR is merged, the release workflow creates the GitHub release and publishes both OCI artifacts using the same stack version.
 
-A release PR must retain Release Please's `autorelease: pending` metadata. If a PR has to be recreated manually from the generated release branch, restore that label and preserve the generated Release Please body/header before merging it; otherwise Release Please may treat the merge as an ordinary commit and generate the next release proposal instead of tagging the merged version.
+A recreated Release Please PR must preserve the generated body and `autorelease: pending` metadata or the merge may not be recognized as a release.
 
-For recovery of a merged-but-untagged release PR, restore `autorelease: pending`, repair the generated body if needed, and re-run the Release Please workflow before accepting a newer release proposal.
+## Upstream relationship
 
-## Roadmap
+RustDesk server containers are consumed from official upstream releases. The historical upstream Helm PR `rustdesk/rustdesk-server#399` is treated as reference material only; this project maintains its own full-stack chart.
 
-1. Validate the pinned Web Client baseline and OCI release pipeline.
-2. Validate a real browser-to-agent session against self-hosted `hbbs`/`hbbr`.
-3. Complete Helm templates for the web client plus `hbbs`/`hbbr` services.
-4. Add HTTPS/WSS ingress examples and an end-to-end browser connection test.
-5. Continue the current-RustDesk reconstruction until it can replace the baseline release source.
+## License
 
-## License and upstream components
-
-This repository contains deployment/build tooling. RustDesk and any upstream artifacts retain their respective licenses and copyright notices. Before redistributing generated RustDesk artifacts, review the applicable upstream license and notices.
+This repository contains deployment/build tooling and packages RustDesk-derived artifacts. RustDesk and upstream components retain their respective licenses and copyright notices.
