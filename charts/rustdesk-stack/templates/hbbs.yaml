@@ -32,6 +32,11 @@ spec:
             - "-r"
             - {{ .Values.hbbs.relay | quote }}
             {{- end }}
+          {{- if .Values.rustdeskServer.keys.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.rustdeskServer.keys.existingSecret }}
+          {{- end }}
           ports:
             - name: nat-test
               containerPort: 21115
@@ -48,11 +53,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /root
-            {{- if .Values.rustdeskServer.keys.existingSecret }}
-            - name: keys
-              mountPath: /keys
-              readOnly: true
-            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
@@ -63,11 +63,6 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-        {{- if .Values.rustdeskServer.keys.existingSecret }}
-        - name: keys
-          secret:
-            secretName: {{ .Values.rustdeskServer.keys.existingSecret }}
-        {{- end }}
 ---
 apiVersion: v1
 kind: Service
