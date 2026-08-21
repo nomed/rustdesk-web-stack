@@ -18,9 +18,9 @@ jobs:
   release-please:
     runs-on: ubuntu-22.04
     outputs:
-      release_created: ${{ steps.state.outputs.release_created }}
-      version: ${{ steps.state.outputs.version }}
-      tag_name: ${{ steps.state.outputs.tag_name }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - name: Release Please
         id: release
@@ -28,57 +28,6 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      - name: Checkout main
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
-
-      - name: Ensure merged release is published
-        id: state
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
-          RELEASE_VERSION: ${{ steps.release.outputs.version }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
-        run: |
-          set -euo pipefail
-
-          created="${RELEASE_CREATED:-false}"
-          version="${RELEASE_VERSION:-}"
-          tag="${RELEASE_TAG:-}"
-
-          if [[ -z "${version}" ]]; then
-            version="$(python3 - <<'PY'
-          import json
-          with open('.release-please-manifest.json', encoding='utf-8') as f:
-              print(json.load(f)['.'])
-          PY
-          )"
-          fi
-
-          if [[ -z "${tag}" ]]; then
-            tag="v${version}"
-          fi
-
-          if [[ "${created}" != "true" && "${version}" != "0.0.0" ]]; then
-            if gh release view "${tag}" >/dev/null 2>&1; then
-              echo "Release ${tag} already exists"
-            else
-              release_sha="$(git log -1 --format=%H -- .release-please-manifest.json)"
-              echo "Creating missing release ${tag} at ${release_sha}"
-              gh release create "${tag}" \
-                --target "${release_sha}" \
-                --title "${tag}" \
-                --generate-notes
-              created=true
-            fi
-          fi
-
-          echo "release_created=${created}" >> "$GITHUB_OUTPUT"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag_name=${tag}" >> "$GITHUB_OUTPUT"
 
   publish:
     needs: release-please
@@ -130,7 +79,7 @@ jobs:
           set -euo pipefail
           version='${{ needs.release-please.outputs.version }}'
           test "$(awk '/^version:/ {print $2}' charts/rustdesk-web/Chart.yaml)" = "${version}"
-          test "$(awk -F'"' '/^appVersion:/ {print $2}' charts/rustdesk-web/Chart.yaml)" = "${version}"
+          test "$(awk -F'\"' '/^appVersion:/ {print $2}' charts/rustdesk-web/Chart.yaml)" = "${version}"
           mkdir -p dist/chart
           helm package charts/rustdesk-web --destination dist/chart
 
