@@ -9,7 +9,28 @@ Unofficial, reproducible packaging and deployment stack for the RustDesk Web Cli
 
 **Early bootstrap / proof of concept.**
 
-The RustDesk upstream repository still contains and actively maintains Web Client code, but its `build-rustdesk-web` GitHub Actions job is currently disabled (`if: False`). This repository starts from that upstream build recipe and aims to make the web build reproducible and deployable without depending on the hosted `rustdesk.com/web` client.
+The RustDesk upstream repository still contains and actively maintains Web Client code, but its `build-rustdesk-web` GitHub Actions job is currently disabled (`if: False`). This repository reproduces that upstream build recipe with pinned inputs and packages the resulting static client as an OCI image.
+
+Current CI target:
+
+```text
+pinned RustDesk source
+        |
+        v
+flutter/web/js build
+        |
+        v
+web_deps.tar.gz
+        |
+        v
+flutter build web --release
+        |
+        +--> CI artifact: rustdesk-web-<upstream-ref>
+        |
+        +--> ghcr.io/nomed/rustdesk-web-stack
+```
+
+The container is published only from a successful `main` build. Pull requests build and validate the web client without publishing an image.
 
 ## Goals
 
@@ -56,16 +77,28 @@ docs/                   Architecture and operational notes
 .github/workflows/       CI/build automation
 ```
 
+## Build
+
+The build is intentionally pinned in `build/upstream.env`.
+
+Prerequisites are Git, Flutter at the pinned version, Node/npm and Yarn. Then run:
+
+```bash
+./build/build-web.sh
+```
+
+The generated static application is written to `dist/web`.
+
 ## Upstream build note
 
-At the time this repository was created, RustDesk upstream keeps a disabled `build-rustdesk-web` job in `.github/workflows/flutter-build.yml`. The recipe includes preparation of the web JavaScript dependencies, extraction of `web_deps.tar.gz`, and finally:
+RustDesk upstream keeps a disabled `build-rustdesk-web` job in `.github/workflows/flutter-build.yml`. Its recipe builds the JavaScript bridge under `flutter/web/js`, downloads the upstream `web_deps.tar.gz` bundle, applies the Flutter patch required by the pinned SDK where necessary, and finally runs:
 
 ```bash
 cd flutter
 flutter build web --release
 ```
 
-This project will reproduce that process with pinned inputs rather than treating a plain `flutter build web` as sufficient.
+This project mirrors that sequence instead of treating a plain `flutter build web` as sufficient.
 
 ## Roadmap
 
