@@ -27,59 +27,46 @@ concurrency:
 jobs:
   build-web:
     runs-on: ubuntu-22.04
-    outputs:
-      rustdesk_ref: ${{ steps.versions.outputs.rustdesk_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Load pinned versions
+      - name: Load pinned baseline versions
         id: versions
         shell: bash
         run: |
           set -euo pipefail
           set -a
-          source build/upstream.env
+          source build/baseline.env
           set +a
-          echo "rustdesk_ref=${RUSTDESK_REF}" >> "$GITHUB_OUTPUT"
+          echo "packaging_ref=${PACKAGING_REF}" >> "$GITHUB_OUTPUT"
+          echo "web_client_ref=${WEB_CLIENT_REF}" >> "$GITHUB_OUTPUT"
           echo "flutter_version=${FLUTTER_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "rust_version=${RUST_VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y wget npm
-          sudo npm install yarn -g
-
-      - name: Install Flutter
-        uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225 # v2.12.0
-        with:
-          channel: stable
-          flutter-version: ${{ steps.versions.outputs.flutter_version }}
-          cache: true
-
-      - name: Build web client
+      - name: Build pinned baseline image
         shell: bash
-        run: bash build/build-web.sh
+        env:
+          IMAGE_TAG: rustdesk-web-stack:ci
+        run: bash build/build-baseline-image.sh
 
       - name: Verify web artifact
         shell: bash
         run: |
           set -euo pipefail
           test -s dist/web/index.html
-          test -s dist/web/flutter_bootstrap.js || test -s dist/web/main.dart.js
+          test -s dist/web/main.dart.js || test -s dist/web/flutter_bootstrap.js
           test -s dist/web/BUILD-INFO.txt
+          test -d dist/web/js
           find dist/web -maxdepth 2 -type f | sort | head -100
 
       - name: Upload web artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: rustdesk-web-${{ steps.versions.outputs.rustdesk_ref }}
+          name: rustdesk-web-${{ steps.versions.outputs.web_client_ref }}
           path: dist/web/
           if-no-files-found: error
           retention-days: 14
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
 
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -89,17 +76,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build container
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
-        with:
-          context: .
-          file: container/Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          tags: |
-            ghcr.io/nomed/rustdesk-web-stack:latest
-            ghcr.io/nomed/rustdesk-web-stack:rustdesk-${{ steps.versions.outputs.rustdesk_ref }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/nomed/rustdesk-web-stack
-            org.opencontainers.image.title=RustDesk Web Stack
-            org.opencontainers.image.description=Unofficial packaged RustDesk web client
-            io.rustdesk.upstream.ref=${{ steps.versions.outputs.rustdesk_ref }}
+      - name: Publish baseline image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_ref="${{ steps.versions.outputs.web_client_ref }}"
+          short_ref="${short_ref:0:12}"
+          docker tag rustdesk-web-stack:ci ghcr.io/nomed/rustdesk-web-stack:latest
+          docker tag rustdesk-web-stack:ci "ghcr.io/nomed/rustdesk-web-stack:web-${short_ref}"
+          docker push ghcr.io/nomed/rustdesk-web-stack:latest
+          docker push "ghcr.io/nomed/rustdesk-web-stack:web-${short_ref}"
