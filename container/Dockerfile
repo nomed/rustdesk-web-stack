@@ -1,7 +1,7 @@
-FROM nginx:1.27-alpine
+FROM caddy:2.10.2-alpine
 
-COPY container/nginx.conf /etc/nginx/conf.d/default.conf
-COPY dist/web/ /usr/share/nginx/html/
+COPY container/Caddyfile /etc/caddy/Caddyfile
+COPY dist/web/ /srv/
 
 EXPOSE 8080
 
